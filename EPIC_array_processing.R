@@ -149,6 +149,10 @@ covariates <- read.table("/Users/hnatri/Dropbox (ASU)/Indonesian_methylation/met
 covariates$Age[which(is.na(covariates$Age) == T)]=45
 
 # Sorting to match the order of samples in the methylation dataframe
+samplenames <- colnames(mval)
+samplenames <- gsub("-methyl1", "", samplenames)
+samplenames <- gsub("-methyl2", "", samplenames)
+length(samplenames)
 covariates <- covariates[match(samplenames, covariates$Sample.ID),]
 dim(covariates)
 
@@ -230,3 +234,78 @@ for (i in all_comparisons){
   write.table(sig_probes, file=path, sep="\t", quote=TRUE)
   coef=coef+1
 }
+
+# Subsetting five samples from each village
+
+subset <- c("MPI-048",
+            "MPI-061",
+            "MPI-242",
+            "MPI-376",
+            "MTW-MDB-002",
+            "MTW-MDB-014",
+            "MTW-MDB-032",
+            "MTW-MDB-034",
+            "MTW-MDB-035",
+            "MTW-TLL-019",
+            "MTW-TLL-025",
+            "SMB-ANK-013",
+            "SMB-ANK-026",
+            "SMB-WNG-002",
+            "SMB-WNG-004",
+            "SMB-WNG-009",
+            "SMB-WNG-022",
+            "MPI-378",
+            "MTW-TLL-010",
+            "MTW-TLL-032",
+            "MTW-TLL-035",
+            "SMB-ANK-003",
+            "SMB-ANK-016",
+            "SMB-WNG-001",
+            "SMB-ANK-016",
+            "SMB-HPM-006",
+            "SMB-HPM-018",
+            "SMB-HPM-021",
+            "SMB-HPM-027",
+            "SMB-RIN-003",
+            "SMB-RIN-009",
+            "SMB-RIN-014",
+            "SMB-RIN-016",
+            "SMB-RIN-019")
+
+subset_mval <- mval[, subset]
+subset_mval <- subset_mval[ , -which(names(subset_mval) %in% c("SMB-ANK-016.1"))]
+subset_covariates <- covariates[covariates$Sample.ID %in% subset,]
+subset_covariates$Sample.ID
+
+# Creating a design matrix for villages
+design <- model.matrix(~0 + subset_covariates$Sampling.Site + subset_covariates$Age + subset_covariates$methyl_batch + subset_covariates$CD8T + subset_covariates$CD4T + subset_covariates$NK + subset_covariates$Bcell + subset_covariates$Mono + subset_covariates$Gran)
+colnames(design) <- c("Anakalung", "Bilarenge", "HupuMada", "Madobag", "Mappi", "PadiraTana", "PatialaBawa", "Rindi", "Taileleu", "Wunga", "WuraHomba", "Age", "Methyl_batch", "CD8T", "CD4T", "NK", "Bcell", "Mono", "Gran")
+
+# Defining pairwise comparisons
+contrasts <- makeContrasts(ANKvsWNG=Anakalung - Wunga, ANKvsRIN=Anakalung - Rindi, ANKvsHPM=Anakalung - HupuMada,
+                           WNGvsRIN=Wunga - Rindi, WNGvsHPM=Wunga - HupuMada, RINvsHPM=Rindi - HupuMada,
+                           ANKvsMDB=Anakalung - Madobag, ANKvsTLL=Anakalung - Taileleu, 
+                           WNGvsMDB=Wunga - Madobag, WNGvsTLL=Wunga - Taileleu, RINvsMDB=Rindi - Madobag, RINvsTLL=Rindi - Taileleu,
+                           HPMvsMDB=HupuMada - Madobag, HPMvsTLL=HupuMada - Taileleu,
+                           ANKvsMPI=Anakalung - Mappi, WNGvsMPI=Wunga - Mappi, RINvsMPI=Rindi - Mappi, HPMvsMPI=HupuMada - Mappi,
+                           MDBvsMPI=Madobag - Mappi, TLLvsMPI=Taileleu - Mappi, MDBvsTLL=Madobag - Taileleu,
+                           levels=colnames(design))
+
+all_comparisons <- colnames(data.frame(contrasts))
+
+# Fitting the linear model
+fit <- lmFit(subset_mval, design)
+vfit <- contrasts.fit(fit, contrasts=contrasts)
+efit <- eBayes(vfit)
+
+# Getting significant probes between villages
+coef=1
+
+for (i in all_comparisons){
+  toptable <- topTable(efit, adjust="BH", coef=coef, num=Inf)
+  sig_probes <- toptable[which(toptable$adj.P.Val<=0.01 & abs(toptable$logFC)>=0.5),]
+  path <- paste("/Users/hnatri/Dropbox (ASU)/Indonesian_methylation/DMP_subset_", i, "_adjp001_logFC05_DeconCell_new.txt", sep = "")
+  write.table(sig_probes, file=path, sep="\t", quote=TRUE)
+  coef=coef+1
+}
+
