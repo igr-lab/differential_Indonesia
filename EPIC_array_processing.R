@@ -150,8 +150,9 @@ covariates$Age[which(is.na(covariates$Age) == T)]=45
 
 # Sorting to match the order of samples in the methylation dataframe
 samplenames <- colnames(mval)
-samplenames <- gsub("-methyl1", "", samplenames)
-samplenames <- gsub("-methyl2", "", samplenames)
+samplenames <- gsub(".methyl1", "", samplenames)
+samplenames <- gsub(".methyl2", "", samplenames)
+samplenames <- gsub("\\.", "-", samplenames)
 length(samplenames)
 covariates <- covariates[match(samplenames, covariates$Sample.ID),]
 dim(covariates)
@@ -172,9 +173,9 @@ head(covariates)
 covariates$methyl_batch <- as.numeric(grepl('methyl1', covariates$methyl_id, ignore.case=T))
 
 # Removing MPI-296 batch 2 sample 
-covariates <- covariates[!(covariates$methyl_id=="MPI-296-methyl2"),]
-colnames(mval)
-mval <- mval[,!(colnames(mval)=="MPI-296-methyl2")]
+# covariates <- covariates[!(covariates$methyl_id=="MPI-296-methyl2"),]
+# colnames(mval)
+# mval <- mval[,!(colnames(mval)=="MPI-296-methyl2")]
 
 # Replacing column names
 colnames(mval) <- covariates$Sample.ID
@@ -198,23 +199,53 @@ coef=1
 for (i in all_comparisons){
   toptable <- topTable(efit, adjust="BH", coef=coef, num=Inf)
   sig_probes <- toptable[which(toptable$adj.P.Val<=1 & abs(toptable$logFC)>=0),]
-  path <- paste("/Users/hnatri/Dropbox (ASU)/Indonesian_methylation/DMP_", i, "_adjp1_logFC0_DeconCell_new.txt", sep = "")
+  path <- paste("/Users/hnatri/Dropbox (ASU)/Indonesian_methylation/DMP_", i, "_adjp1_logFC0_DeconCell_new_allsamples.txt", sep = "")
   write.table(sig_probes, file=path, sep="\t", quote=TRUE)
   coef=coef+1
 }
+
+# Finding differentially methylated regions
+mval_matrix <- as.matrix(mval)
+coef=1
+
+for (i in all_comparisons){
+  myAnnotation <- cpg.annotate(object = mval_matrix, datatype = "array", what = "M",
+                               annotation=c(array = "IlluminaHumanMethylationEPIC", annotation = "ilm10b2.hg19"),
+                               analysis.type = "differential", design = design,
+                               contrasts = TRUE, cont.matrix = contrasts,
+                               coef = i, arraytype = "EPIC", fdr = 0.01)
+  
+  DMRs <- dmrcate(myAnnotation, lambda=1000, C=2, betacutoff = 0, min.cpgs=2)
+  
+  # Converting the regions to annotated genomic ranges
+  DMRs_results_ranges <- extractRanges(DMRs, genome = "hg19")
+  
+  # Saving annotated ranges to a file
+  DMRs_results_ranges_df = as(DMRs_results_ranges, "data.frame")
+  path <- paste("/Users/hnatri/Dropbox (ASU)/Indonesian_methylation/DMRs_", i, "_fdr001_beta0_pcutoffdefault_mincpgs2_DeconCell_new_allsamples.txt", sep = "")
+  write.table(DMRs_results_ranges_df, path, sep = "\t")
+}
+
+
 
 # Creating a design matrix for villages
 design <- model.matrix(~0 + covariates$Sampling.Site + covariates$Age + covariates$methyl_batch + covariates$CD8T + covariates$CD4T + covariates$NK + covariates$Bcell + covariates$Mono + covariates$Gran)
 colnames(design) <- c("Anakalung", "Bilarenge", "HupuMada", "Madobag", "Mappi", "PadiraTana", "PatialaBawa", "Rindi", "Taileleu", "Wunga", "WuraHomba", "Age", "Methyl_batch", "CD8T", "CD4T", "NK", "Bcell", "Mono", "Gran")
 
 # Defining pairwise comparisons
-contrasts <- makeContrasts(ANKvsWNG=Anakalung - Wunga, ANKvsRIN=Anakalung - Rindi, ANKvsHPM=Anakalung - HupuMada, ANKvsPDT=Anakalung - PatialaBawa,
-                           WNGvsRIN=Wunga - Rindi, WNGvsHPM=Wunga - HupuMada, WNGvsPDT=Wunga - PadiraTana, RINvsHPM=Rindi - HupuMada,
-                           RINvsPDT=Rindi -PadiraTana, HPMvsPDT=HupuMada - PadiraTana, ANKvsMDB=Anakalung - Madobag, ANKvsTLL=Anakalung - Taileleu, 
-                           WNGvsMDB=Wunga - Madobag, WNGvsTLL=Wunga - Taileleu, RINvsMDB=Rindi - Madobag, RINvsTLL=Rindi - Taileleu,
-                           HPMvsMDB=HupuMada - Madobag, HPMvsTLL=HupuMada - Taileleu, PDTvsMDB=PadiraTana - Madobag, PDTvsTLL=PadiraTana - Taileleu,
-                           ANKvsMPI=Anakalung - Mappi, WNGvsMPI=Wunga - Mappi, RINvsMPI=Rindi - Mappi, HPMvsMPI=HupuMada - Mappi,
-                           PDTvsMPI=PadiraTana - Mappi, MDBvsMPI=Madobag - Mappi, TLLvsMPI=Taileleu - Mappi, MDBvsTLL=Madobag - Taileleu,
+# contrasts <- makeContrasts(ANKvsWNG=Anakalung - Wunga, ANKvsRIN=Anakalung - Rindi, ANKvsHPM=Anakalung - HupuMada, ANKvsPDT=Anakalung - PatialaBawa,
+#                            WNGvsRIN=Wunga - Rindi, WNGvsHPM=Wunga - HupuMada, WNGvsPDT=Wunga - PadiraTana, RINvsHPM=Rindi - HupuMada,
+#                            RINvsPDT=Rindi -PadiraTana, HPMvsPDT=HupuMada - PadiraTana, ANKvsMDB=Anakalung - Madobag, ANKvsTLL=Anakalung - Taileleu, 
+#                            WNGvsMDB=Wunga - Madobag, WNGvsTLL=Wunga - Taileleu, RINvsMDB=Rindi - Madobag, RINvsTLL=Rindi - Taileleu,
+#                            HPMvsMDB=HupuMada - Madobag, HPMvsTLL=HupuMada - Taileleu, PDTvsMDB=PadiraTana - Madobag, PDTvsTLL=PadiraTana - Taileleu,
+#                            ANKvsMPI=Anakalung - Mappi, WNGvsMPI=Wunga - Mappi, RINvsMPI=Rindi - Mappi, HPMvsMPI=HupuMada - Mappi,
+#                            PDTvsMPI=PadiraTana - Mappi, MDBvsMPI=Madobag - Mappi, TLLvsMPI=Taileleu - Mappi, MDBvsTLL=Madobag - Taileleu,
+#                            levels=colnames(design))
+
+contrasts <- makeContrasts(ANKvsWNG=Anakalung - Wunga, ANKvsMDB=Anakalung - Madobag, ANKvsTLL=Anakalung - Taileleu, 
+                           WNGvsMDB=Wunga - Madobag, WNGvsTLL=Wunga - Taileleu, 
+                           ANKvsMPI=Anakalung - Mappi, WNGvsMPI=Wunga - Mappi,
+                           MDBvsMPI=Madobag - Mappi, TLLvsMPI=Taileleu - Mappi, MDBvsTLL=Madobag - Taileleu,
                            levels=colnames(design))
 
 all_comparisons <- colnames(data.frame(contrasts))
@@ -229,83 +260,30 @@ coef=1
 
 for (i in all_comparisons){
   toptable <- topTable(efit, adjust="BH", coef=coef, num=Inf)
-  sig_probes <- toptable[which(toptable$adj.P.Val<=0.01 & abs(toptable$logFC)>=0.5),]
-  path <- paste("/Users/hnatri/Dropbox (ASU)/Indonesian_methylation/DMP_", i, "_adjp001_logFC05_DeconCell_new.txt", sep = "")
+  sig_probes <- toptable[which(toptable$adj.P.Val<=0.01 & abs(toptable$logFC)>=1),]
+  path <- paste("/Users/hnatri/Dropbox (ASU)/Indonesian_methylation/DMP_", i, "_adjp001_logFC1_DeconCell_new_allsamples.txt", sep = "")
   write.table(sig_probes, file=path, sep="\t", quote=TRUE)
   coef=coef+1
 }
 
-# Subsetting five samples from each village
-
-subset <- c("MPI-048",
-            "MPI-061",
-            "MPI-242",
-            "MPI-376",
-            "MTW-MDB-002",
-            "MTW-MDB-014",
-            "MTW-MDB-032",
-            "MTW-MDB-034",
-            "MTW-MDB-035",
-            "MTW-TLL-019",
-            "MTW-TLL-025",
-            "SMB-ANK-013",
-            "SMB-ANK-026",
-            "SMB-WNG-002",
-            "SMB-WNG-004",
-            "SMB-WNG-009",
-            "SMB-WNG-022",
-            "MPI-378",
-            "MTW-TLL-010",
-            "MTW-TLL-032",
-            "MTW-TLL-035",
-            "SMB-ANK-003",
-            "SMB-ANK-016",
-            "SMB-WNG-001",
-            "SMB-ANK-016",
-            "SMB-HPM-006",
-            "SMB-HPM-018",
-            "SMB-HPM-021",
-            "SMB-HPM-027",
-            "SMB-RIN-003",
-            "SMB-RIN-009",
-            "SMB-RIN-014",
-            "SMB-RIN-016",
-            "SMB-RIN-019")
-
-subset_mval <- mval[, subset]
-subset_mval <- subset_mval[ , -which(names(subset_mval) %in% c("SMB-ANK-016.1"))]
-subset_covariates <- covariates[covariates$Sample.ID %in% subset,]
-subset_covariates$Sample.ID
-
-# Creating a design matrix for villages
-design <- model.matrix(~0 + subset_covariates$Sampling.Site + subset_covariates$Age + subset_covariates$methyl_batch + subset_covariates$CD8T + subset_covariates$CD4T + subset_covariates$NK + subset_covariates$Bcell + subset_covariates$Mono + subset_covariates$Gran)
-colnames(design) <- c("Anakalung", "Bilarenge", "HupuMada", "Madobag", "Mappi", "PadiraTana", "PatialaBawa", "Rindi", "Taileleu", "Wunga", "WuraHomba", "Age", "Methyl_batch", "CD8T", "CD4T", "NK", "Bcell", "Mono", "Gran")
-
-# Defining pairwise comparisons
-contrasts <- makeContrasts(ANKvsWNG=Anakalung - Wunga, ANKvsRIN=Anakalung - Rindi, ANKvsHPM=Anakalung - HupuMada,
-                           WNGvsRIN=Wunga - Rindi, WNGvsHPM=Wunga - HupuMada, RINvsHPM=Rindi - HupuMada,
-                           ANKvsMDB=Anakalung - Madobag, ANKvsTLL=Anakalung - Taileleu, 
-                           WNGvsMDB=Wunga - Madobag, WNGvsTLL=Wunga - Taileleu, RINvsMDB=Rindi - Madobag, RINvsTLL=Rindi - Taileleu,
-                           HPMvsMDB=HupuMada - Madobag, HPMvsTLL=HupuMada - Taileleu,
-                           ANKvsMPI=Anakalung - Mappi, WNGvsMPI=Wunga - Mappi, RINvsMPI=Rindi - Mappi, HPMvsMPI=HupuMada - Mappi,
-                           MDBvsMPI=Madobag - Mappi, TLLvsMPI=Taileleu - Mappi, MDBvsTLL=Madobag - Taileleu,
-                           levels=colnames(design))
-
-all_comparisons <- colnames(data.frame(contrasts))
-
-# Fitting the linear model
-fit <- lmFit(subset_mval, design)
-vfit <- contrasts.fit(fit, contrasts=contrasts)
-efit <- eBayes(vfit)
-
-# Getting significant probes between villages
+# Finding differentially methylated regions
+mval_matrix <- as.matrix(mval)
 coef=1
 
 for (i in all_comparisons){
-  toptable <- topTable(efit, adjust="BH", coef=coef, num=Inf)
-  sig_probes <- toptable[which(toptable$adj.P.Val<=0.01 & abs(toptable$logFC)>=0.5),]
-  path <- paste("/Users/hnatri/Dropbox (ASU)/Indonesian_methylation/DMP_subset_", i, "_adjp001_logFC05_DeconCell_new.txt", sep = "")
-  write.table(sig_probes, file=path, sep="\t", quote=TRUE)
-  coef=coef+1
+  myAnnotation <- cpg.annotate(object = mval_matrix, datatype = "array", what = "M",
+                               annotation=c(array = "IlluminaHumanMethylationEPIC", annotation = "ilm10b2.hg19"),
+                               analysis.type = "differential", design = design,
+                               contrasts = TRUE, cont.matrix = contrasts,
+                               coef = i, arraytype = "EPIC", fdr = 0.01)
+  
+  DMRs <- dmrcate(myAnnotation, lambda=1000, C=2, betacutoff = 0, min.cpgs=2)
+  
+  # Converting the regions to annotated genomic ranges
+  DMRs_results_ranges <- extractRanges(DMRs, genome = "hg19")
+  
+  # Saving annotated ranges to a file
+  DMRs_results_ranges_df = as(DMRs_results_ranges, "data.frame")
+  path <- paste("/Users/hnatri/Dropbox (ASU)/Indonesian_methylation/DMRs_", i, "_fdr001_beta0_pcutoffdefault_mincpgs2_DeconCell_new_allsamples.txt", sep = "")
+  write.table(DMRs_results_ranges_df, path, sep = "\t")
 }
-
